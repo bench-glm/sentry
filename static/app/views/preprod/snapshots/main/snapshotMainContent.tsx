@@ -1,4 +1,4 @@
-import {Fragment, useEffect, useRef, useState} from 'react';
+import {Fragment, useCallback, useEffect, useRef, useState} from 'react';
 import {useTheme} from '@emotion/react';
 import styled from '@emotion/styled';
 
@@ -90,7 +90,42 @@ export function SnapshotMainContent({
   canNavigateNext,
 }: SnapshotMainContentProps) {
   const [isDark, setIsDark] = useState(false);
+  const [pressedDir, setPressedDir] = useState<'up' | 'down' | null>(null);
   const toggleDark = () => setIsDark(v => !v);
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (viewMode !== 'single') {
+        return;
+      }
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        setPressedDir('up');
+      } else if (e.key === 'ArrowDown') {
+        setPressedDir('down');
+      }
+    },
+    [viewMode]
+  );
+
+  const handleKeyUp = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      setPressedDir(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [handleKeyDown, handleKeyUp]);
+
   const toggle = (
     <ViewModeToggle viewMode={viewMode} onViewModeChange={onViewModeChange} />
   );
@@ -209,10 +244,10 @@ export function SnapshotMainContent({
             <Flex direction="column" flex="1" minWidth="0">
               <DarkAware isDark={isDark}>
                 {groupName ? (
-                  <SingleViewGroup>
+                  <GroupContainerRoot style={{flex: '1 1 0', minHeight: 0}}>
                     <GroupHeader name={groupName} />
                     {card}
-                  </SingleViewGroup>
+                  </GroupContainerRoot>
                 ) : (
                   card
                 )}
@@ -220,21 +255,23 @@ export function SnapshotMainContent({
             </Flex>
             <NavGutter>
               <Tooltip title={t('Previous')} skipWrapper>
-                <Button
+                <NavButton
                   size="sm"
                   icon={<IconArrow direction="up" />}
                   aria-label={t('Previous snapshot')}
                   disabled={!canNavigatePrev}
                   onClick={() => onNavigateSingleView('prev')}
+                  data-pressed={pressedDir === 'up' && canNavigatePrev}
                 />
               </Tooltip>
               <Tooltip title={t('Next')} skipWrapper>
-                <Button
+                <NavButton
                   size="sm"
                   icon={<IconArrow direction="down" />}
                   aria-label={t('Next snapshot')}
                   disabled={!canNavigateNext}
                   onClick={() => onNavigateSingleView('next')}
+                  data-pressed={pressedDir === 'down' && canNavigateNext}
                 />
               </Tooltip>
             </NavGutter>
@@ -523,18 +560,25 @@ const SingleViewGroup = styled(Stack)`
   min-height: 0;
 `;
 
+const NavButton = styled(Button)`
+  transition: transform 80ms ease;
+  &[data-pressed='true'] {
+    transform: scale(0.85);
+  }
+`;
+
 const SingleViewCard = styled(Card)`
-  flex: 1 1 0;
-  min-height: 0;
   display: flex;
   flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
 `;
 
 const SingleViewBody = styled('div')`
-  flex: 1 1 0;
-  min-height: 0;
   display: flex;
   flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
 `;
 
 const ColorPickerWrapper = styled('div')`
