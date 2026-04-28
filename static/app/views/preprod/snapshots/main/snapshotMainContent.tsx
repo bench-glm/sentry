@@ -38,7 +38,7 @@ import {
 } from './snapshotListView';
 
 export type ViewMode = 'single' | 'list';
-export type SortBy = 'diff' | 'alpha';
+type SortBy = 'diff' | 'alpha';
 
 interface SnapshotMainContentProps {
   canNavigateNext: boolean;
@@ -244,10 +244,17 @@ export function SnapshotMainContent({
             <Flex direction="column" flex="1" minWidth="0">
               <DarkAware isDark={isDark}>
                 {groupName ? (
-                  <GroupContainerRoot style={{flex: '1 1 0', minHeight: 0}}>
+                  <Stack
+                    background="primary"
+                    border="primary"
+                    radius="md"
+                    padding="lg"
+                    gap="md"
+                    style={{flex: '1 1 0', minHeight: 0}}
+                  >
                     <GroupHeader name={groupName} />
                     {card}
-                  </GroupContainerRoot>
+                  </Stack>
                 ) : (
                   card
                 )}
