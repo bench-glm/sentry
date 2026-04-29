@@ -44,6 +44,7 @@ START_TIME_DELTA_MINUTES = 60
 TRANSACTION_BATCH_SIZE = 50
 TRACE_PROCESSING_TTL_SECONDS = 7200
 MAX_LLM_FIELD_LENGTH = 2000
+TRACES_PER_INVOCATION: dict[str, int] = {"team": 1, "business": 3}
 
 
 seer_issue_detection_connection_pool = connection_from_url(
@@ -354,9 +355,10 @@ def detect_llm_issues_for_org(org_id: int, plan_tier: str = "business") -> None:
     if skipped:
         sentry_sdk.metrics.count("llm_issue_detection.trace.skipped", skipped)
 
+    trace_limit = TRACES_PER_INVOCATION.get(plan_tier, 1)
     traces_to_send: list[TraceMetadataWithSpanCount] = [
         t for t in evidence_traces if t.trace_id in unprocessed_ids
-    ][:1]
+    ][:trace_limit]
 
     if not traces_to_send:
         return

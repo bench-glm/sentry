@@ -260,7 +260,8 @@ class LLMIssueDetectionTest(TestCase):
         seer_request = mock_seer_request.call_args[0][0]
         assert seer_request.project_id == self.project.id
         assert seer_request.organization_id == self.organization.id
-        assert len(seer_request.traces) == 1
+        # Default plan_tier is "business" which gets up to 3 traces; 2 available here
+        assert len(seer_request.traces) == 2
 
         assert mock_mark_processed.call_count == 1
 
@@ -380,6 +381,85 @@ class LLMIssueDetectionTest(TestCase):
 
         budget_url = mock_budget_request.call_args[0][1]
         assert "plan_tier=business" in budget_url
+
+    @with_feature("organizations:gen-ai-features")
+    @patch("sentry.tasks.llm_issue_detection.detection.make_signed_seer_api_request")
+    @patch("sentry.tasks.llm_issue_detection.detection.mark_traces_as_processed")
+    @patch("sentry.tasks.llm_issue_detection.detection._get_unprocessed_traces")
+    @patch("sentry.tasks.llm_issue_detection.detection.make_issue_detection_request")
+    @patch(
+        "sentry.tasks.llm_issue_detection.trace_data.get_project_top_transaction_traces_for_llm_detection"
+    )
+    @patch("sentry.tasks.llm_issue_detection.detection.random.shuffle")
+    def test_team_plan_sends_one_trace(
+        self,
+        mock_shuffle,
+        mock_get_transactions,
+        mock_seer_request,
+        mock_get_unprocessed,
+        mock_mark_processed,
+        mock_budget_request,
+    ):
+        from sentry.tasks.llm_issue_detection.detection import TraceMetadataWithSpanCount
+
+        mock_budget_request.return_value = self._budget_ok_response()
+        mock_shuffle.return_value = None
+        mock_get_unprocessed.return_value = {"t1", "t2", "t3"}
+        mock_get_transactions.return_value = [
+            TraceMetadataWithSpanCount(trace_id="t1", span_count=50),
+            TraceMetadataWithSpanCount(trace_id="t2", span_count=60),
+            TraceMetadataWithSpanCount(trace_id="t3", span_count=70),
+        ]
+
+        mock_accepted = Mock()
+        mock_accepted.status = 202
+        mock_seer_request.return_value = mock_accepted
+
+        detect_llm_issues_for_org(self.organization.id, plan_tier="team")
+
+        seer_request = mock_seer_request.call_args[0][0]
+        assert len(seer_request.traces) == 1
+        assert seer_request.plan_tier == "team"
+
+    @with_feature("organizations:gen-ai-features")
+    @patch("sentry.tasks.llm_issue_detection.detection.make_signed_seer_api_request")
+    @patch("sentry.tasks.llm_issue_detection.detection.mark_traces_as_processed")
+    @patch("sentry.tasks.llm_issue_detection.detection._get_unprocessed_traces")
+    @patch("sentry.tasks.llm_issue_detection.detection.make_issue_detection_request")
+    @patch(
+        "sentry.tasks.llm_issue_detection.trace_data.get_project_top_transaction_traces_for_llm_detection"
+    )
+    @patch("sentry.tasks.llm_issue_detection.detection.random.shuffle")
+    def test_business_plan_sends_up_to_three_traces(
+        self,
+        mock_shuffle,
+        mock_get_transactions,
+        mock_seer_request,
+        mock_get_unprocessed,
+        mock_mark_processed,
+        mock_budget_request,
+    ):
+        from sentry.tasks.llm_issue_detection.detection import TraceMetadataWithSpanCount
+
+        mock_budget_request.return_value = self._budget_ok_response()
+        mock_shuffle.return_value = None
+        mock_get_unprocessed.return_value = {"t1", "t2", "t3", "t4"}
+        mock_get_transactions.return_value = [
+            TraceMetadataWithSpanCount(trace_id="t1", span_count=50),
+            TraceMetadataWithSpanCount(trace_id="t2", span_count=60),
+            TraceMetadataWithSpanCount(trace_id="t3", span_count=70),
+            TraceMetadataWithSpanCount(trace_id="t4", span_count=80),
+        ]
+
+        mock_accepted = Mock()
+        mock_accepted.status = 202
+        mock_seer_request.return_value = mock_accepted
+
+        detect_llm_issues_for_org(self.organization.id, plan_tier="business")
+
+        seer_request = mock_seer_request.call_args[0][0]
+        assert len(seer_request.traces) == 3
+        assert seer_request.plan_tier == "business"
 
 
 class TestTraceProcessingFunctions:
