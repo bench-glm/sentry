@@ -123,11 +123,15 @@ class SchedulePerOrgCalculationsTest(TestCase):
                 "sentry.dynamic_sampling.per_org.tasks.scheduler.get_eap_organization_volume",
                 return_value=None,
             ) as get_volume,
+            patch(
+                "sentry.dynamic_sampling.per_org.tasks.scheduler.get_eap_project_volumes"
+            ) as get_project_volumes,
         ):
             result = run_calculations_per_org_task(org.id)
 
         assert result == TelemetryStatus.NO_VOLUME
         get_volume.assert_called_once_with(org)
+        get_project_volumes.assert_not_called()
 
     @override_options({"dynamic-sampling.per_org.rollout-rate": 1.0})
     def test_run_calculations_per_org_continues_with_traffic(self) -> None:
@@ -140,11 +144,38 @@ class SchedulePerOrgCalculationsTest(TestCase):
                 "sentry.dynamic_sampling.per_org.tasks.scheduler.get_eap_organization_volume",
                 return_value=org_volume,
             ) as get_volume,
+            patch(
+                "sentry.dynamic_sampling.per_org.tasks.scheduler.get_eap_project_volumes",
+                return_value=[(1, 100, 25, 75)],
+            ) as get_project_volumes,
         ):
             result = run_calculations_per_org_task(org.id)
 
         assert result is None
         get_volume.assert_called_once_with(org)
+        get_project_volumes.assert_called_once_with(org)
+
+    @override_options({"dynamic-sampling.per_org.rollout-rate": 1.0})
+    def test_run_calculations_per_org_returns_no_volume_without_project_volumes(self) -> None:
+        org = self.create_organization()
+        org_volume = OrganizationDataVolume(org_id=org.id, total=100, indexed=25)
+
+        with (
+            self.feature("organizations:dynamic-sampling"),
+            patch(
+                "sentry.dynamic_sampling.per_org.tasks.scheduler.get_eap_organization_volume",
+                return_value=org_volume,
+            ) as get_volume,
+            patch(
+                "sentry.dynamic_sampling.per_org.tasks.scheduler.get_eap_project_volumes",
+                return_value=[],
+            ) as get_project_volumes,
+        ):
+            result = run_calculations_per_org_task(org.id)
+
+        assert result == TelemetryStatus.NO_VOLUME
+        get_volume.assert_called_once_with(org)
+        get_project_volumes.assert_called_once_with(org)
 
     @override_options({"dynamic-sampling.per_org.rollout-rate": 1.0})
     def test_run_calculations_per_org_skips_org_without_dynamic_sampling(self) -> None:

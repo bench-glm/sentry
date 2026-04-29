@@ -7,10 +7,12 @@ from typing import Any
 from sentry_protos.snuba.v1.trace_item_attribute_pb2 import ExtrapolationMode
 
 from sentry.constants import ObjectStatus
+from sentry.dynamic_sampling.rules.utils import DecisionDropCount, DecisionKeepCount, ProjectId
 from sentry.dynamic_sampling.tasks.common import (
     ACTIVE_ORGS_VOLUMES_DEFAULT_TIME_INTERVAL,
     OrganizationDataVolume,
 )
+from sentry.dynamic_sampling.tasks.constants import CHUNK_SIZE
 from sentry.models.organization import Organization
 from sentry.models.project import Project
 from sentry.search.eap.constants import SAMPLING_MODE_HIGHEST_ACCURACY
@@ -18,6 +20,8 @@ from sentry.search.eap.types import SearchResolverConfig
 from sentry.search.events.types import SnubaParams
 from sentry.snuba.referrer import Referrer
 from sentry.snuba.spans_rpc import Spans
+
+ProjectVolumes = tuple[ProjectId, int, DecisionKeepCount, DecisionDropCount]
 
 
 def _get_aggregate_int(row: Mapping[str, Any], column: str) -> int:
@@ -67,3 +71,55 @@ def get_eap_organization_volume(
     indexed = _get_aggregate_int(row, "count_sample()")
 
     return OrganizationDataVolume(org_id=organization.id, total=total, indexed=indexed)
+
+
+def get_eap_project_volumes(
+    organization: Organization,
+    time_interval: timedelta = ACTIVE_ORGS_VOLUMES_DEFAULT_TIME_INTERVAL,
+) -> list[ProjectVolumes]:
+    projects = list(
+        Project.objects.filter(organization_id=organization.id, status=ObjectStatus.ACTIVE)
+    )
+    if not projects:
+        return []
+
+    end_time = datetime.now(UTC)
+    start_time = end_time - time_interval
+    offset = 0
+    project_volumes: list[ProjectVolumes] = []
+    more_results = True
+
+    while more_results:
+        result = Spans.run_table_query(
+            params=SnubaParams(
+                start=start_time,
+                end=end_time,
+                projects=projects,
+                organization=organization,
+            ),
+            query_string="is_transaction:true",
+            selected_columns=["project.id", "count()", "count_sample()"],
+            orderby=["project.id"],
+            offset=offset,
+            limit=CHUNK_SIZE + 1,
+            referrer=Referrer.DYNAMIC_SAMPLING_PER_ORG_GET_EAP_PROJECT_VOLUMES.value,
+            config=SearchResolverConfig(
+                auto_fields=True,
+                extrapolation_mode=ExtrapolationMode.EXTRAPOLATION_MODE_SERVER_ONLY,
+            ),
+            sampling_mode=SAMPLING_MODE_HIGHEST_ACCURACY,
+        )
+
+        data = result.get("data", [])
+        more_results = len(data) > CHUNK_SIZE
+        offset += CHUNK_SIZE
+        if more_results:
+            data = data[:-1]
+
+        for row in data:
+            total = int(row["count()"])
+            keep = int(row["count_sample()"])
+            drop = max(total - keep, 0)
+            project_volumes.append((ProjectId(row["project.id"]), total, keep, drop))
+
+    return project_volumes

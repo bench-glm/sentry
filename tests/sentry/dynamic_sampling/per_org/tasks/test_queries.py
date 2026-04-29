@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from sentry.dynamic_sampling.per_org.tasks.queries import get_eap_organization_volume
+from sentry.dynamic_sampling.per_org.tasks.queries import (
+    get_eap_organization_volume,
+    get_eap_project_volumes,
+)
 from sentry.dynamic_sampling.tasks.common import OrganizationDataVolume
 from sentry.testutils.cases import SnubaTestCase, SpanTestCase, TestCase
 from sentry.testutils.helpers.datetime import before_now
@@ -86,3 +89,68 @@ class EAPOrganizationVolumeTest(TestCase, SnubaTestCase, SpanTestCase):
         org_volume = get_eap_organization_volume(organization, time_interval=timedelta(hours=1))
 
         assert org_volume is None
+
+    def test_get_eap_project_volumes_existing_org(self) -> None:
+        organization = self.create_organization()
+        project = self.create_project(organization=organization)
+        other_project = self.create_project(organization=organization)
+        other_organization = self.create_organization()
+        other_org_project = self.create_project(organization=other_organization)
+        timestamp = before_now(minutes=15)
+
+        self.store_spans(
+            [
+                self.create_span(
+                    {"is_segment": True},
+                    organization=organization,
+                    project=project,
+                    start_ts=timestamp,
+                ),
+                self.create_span(
+                    {"is_segment": True},
+                    organization=organization,
+                    project=project,
+                    start_ts=timestamp + timedelta(seconds=1),
+                ),
+                self.create_span(
+                    {"is_segment": False},
+                    organization=organization,
+                    project=project,
+                    start_ts=timestamp + timedelta(seconds=2),
+                ),
+                self.create_span(
+                    {"is_segment": True},
+                    organization=organization,
+                    project=other_project,
+                    start_ts=timestamp,
+                ),
+                self.create_span(
+                    {"is_segment": True},
+                    organization=other_organization,
+                    project=other_org_project,
+                    start_ts=timestamp,
+                ),
+            ]
+        )
+
+        project_volumes = get_eap_project_volumes(organization, time_interval=timedelta(hours=1))
+
+        assert sorted(project_volumes) == [
+            (project.id, 2, 2, 0),
+            (other_project.id, 1, 1, 0),
+        ]
+
+    def test_get_eap_project_volumes_without_traffic(self) -> None:
+        organization = self.create_organization()
+        self.create_project(organization=organization)
+
+        project_volumes = get_eap_project_volumes(organization, time_interval=timedelta(hours=1))
+
+        assert project_volumes == []
+
+    def test_get_eap_project_volumes_without_projects(self) -> None:
+        organization = self.create_organization()
+
+        project_volumes = get_eap_project_volumes(organization, time_interval=timedelta(hours=1))
+
+        assert project_volumes == []
