@@ -283,8 +283,7 @@ describe('Sentry Application Details', () => {
     it('has tokens', async () => {
       renderComponent();
 
-      await screen.findByRole('button', {name: 'Save Changes'});
-      expect(screen.getByLabelText('Token preview')).toHaveTextContent('oken');
+      expect(await screen.findByLabelText('Token preview')).toHaveTextContent('oken');
     });
 
     it('shows just clientSecret', async () => {
@@ -329,8 +328,9 @@ describe('Sentry Application Details', () => {
     it('shows masked tokens', async () => {
       renderComponent();
 
-      await screen.findByRole('button', {name: 'Save Changes'});
-      expect(screen.getByLabelText('Token preview')).toHaveTextContent(maskedValue);
+      expect(await screen.findByLabelText('Token preview')).toHaveTextContent(
+        maskedValue
+      );
     });
 
     it('shows masked clientSecret', async () => {
@@ -389,9 +389,8 @@ describe('Sentry Application Details', () => {
       renderComponent();
       renderGlobalModal();
 
-      await screen.findByRole('button', {name: 'Save Changes'});
+      expect(await screen.findByLabelText('Token preview')).toBeInTheDocument();
       expect(screen.queryByLabelText('Generated token')).not.toBeInTheDocument();
-      expect(screen.getAllByLabelText('Token preview')).toHaveLength(1);
 
       await userEvent.click(screen.getByRole('button', {name: 'New Token'}));
 
@@ -412,8 +411,7 @@ describe('Sentry Application Details', () => {
 
       renderComponent();
       renderGlobalModal();
-      await screen.findByRole('button', {name: 'Save Changes'});
-      await userEvent.click(screen.getByRole('button', {name: 'Revoke'}));
+      await userEvent.click(await screen.findByRole('button', {name: 'Revoke'}));
       // Confirm modal
       await userEvent.click(screen.getByRole('button', {name: 'Confirm'}));
       expect(
