@@ -11,19 +11,28 @@ import {StickyFooter} from 'sentry/components/workflowEngine/ui/footer';
 import type {AvatarProject} from 'sentry/types/project';
 import {useHasPageFrameFeature} from 'sentry/views/navigation/useHasPageFrameFeature';
 
-interface WorkflowEngineEditLayoutProps {
-  /**
-   * The main content for this page
-   * Expected to include `<EditLayout.Body>`, `<EditLayout.Header>`, and `<EditLayout.Footer>` components.
-   */
+interface EditLayoutProps {
   children: React.ReactNode;
-  formProps?: React.ComponentProps<typeof FullHeightForm>;
 }
 
-/**
- * Precomposed layout for Monitors / Alerts edit pages with form handling.
- */
-function EditLayoutComponent({children, formProps}: WorkflowEngineEditLayoutProps) {
+function EditLayoutComponent({children}: EditLayoutProps) {
+  // TODO(JonasBadalic): Remove this once the page-frame feature is GA'd
+  const hasPageFrame = useHasPageFrameFeature();
+  return (
+    <FullHeightContainer>
+      <Stack flex="unset" background={hasPageFrame ? undefined : 'primary'}>
+        {children}
+      </Stack>
+    </FullHeightContainer>
+  );
+}
+
+interface EditLayoutDeprecatedProps {
+  children: React.ReactNode;
+  formProps: React.ComponentProps<typeof FullHeightForm>;
+}
+
+function EditLayoutDeprecatedComponent({children, formProps}: EditLayoutDeprecatedProps) {
   // TODO(JonasBadalic): Remove this once the page-frame feature is GA'd
   const hasPageFrame = useHasPageFrameFeature();
   return (
@@ -34,6 +43,19 @@ function EditLayoutComponent({children, formProps}: WorkflowEngineEditLayoutProp
     </FullHeightForm>
   );
 }
+
+const FullHeightContainer = styled('div')`
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0%;
+  background-color: ${p => p.theme.tokens.background.primary};
+
+  & > div:first-child {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+  }
+`;
 
 const StyledLayoutHeader = styled(Layout.Header)`
   background-color: ${p => p.theme.tokens.background.primary};
@@ -143,6 +165,20 @@ function Footer({children, label, maxWidth}: FooterProps) {
 }
 
 export const EditLayout = Object.assign(EditLayoutComponent, {
+  Header,
+  HeaderContent,
+  Actions,
+  HeaderFields,
+  Body,
+  Footer,
+  Title,
+});
+
+/**
+ * This component is for forms still using the legacy `FormModel` system.
+ * Remove once all detector forms have migrated to the new form system.
+ */
+export const EditLayoutDeprecated = Object.assign(EditLayoutDeprecatedComponent, {
   Header,
   HeaderContent,
   Actions,
