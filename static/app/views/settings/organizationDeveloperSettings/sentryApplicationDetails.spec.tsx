@@ -489,6 +489,31 @@ describe('Sentry Application Details', () => {
       );
     });
 
+    it('clears a populated schema and saves an empty object', async () => {
+      sentryApp.schema = {elements: [{type: 'issue-link'}]} as SentryApp['schema'];
+      MockApiClient.addMockResponse({
+        url: `/sentry-apps/${sentryApp.slug}/`,
+        body: sentryApp,
+      });
+
+      renderComponent();
+      const schemaTextbox = await screen.findByRole('textbox', {name: 'Schema'});
+      expect(schemaTextbox).toHaveValue(JSON.stringify(sentryApp.schema, null, 2));
+
+      await userEvent.clear(schemaTextbox);
+      await userEvent.type(schemaTextbox, '{{}');
+
+      await userEvent.click(screen.getByRole('button', {name: 'Save Changes'}));
+
+      expect(editAppRequest).toHaveBeenCalledWith(
+        `/sentry-apps/${sentryApp.slug}/`,
+        expect.objectContaining({
+          data: expect.objectContaining({schema: {}}),
+          method: 'PUT',
+        })
+      );
+    });
+
     it('submits with no-access for event subscription when permission is revoked', async () => {
       renderComponent();
       await screen.findByRole('button', {name: 'Save Changes'});
